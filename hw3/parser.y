@@ -12,7 +12,7 @@ AST_NODE *prog;
 
 extern int g_anyErrorOccur;
 
-static inline AST_NODE* makeSibling(AST_NODE *a, AST_NODE *b)
+static inline AST_NODE* S(AST_NODE *a, AST_NODE *b)
 { 
     while (a->rightSibling) {
         a = a->rightSibling;
@@ -39,7 +39,7 @@ static inline AST_NODE* makeChild(AST_NODE *parent, AST_NODE *child)
         return parent;
     }
     if (parent->child) {
-        makeSibling(parent->child, child);
+        S(parent->child, child);
     } else {
         child = child->leftmostSibling;
         parent->child = child;
@@ -61,7 +61,7 @@ static AST_NODE* makeFamily(AST_NODE *parent, int childrenCount, ...)
     int index = 1;
     for (index = 1; index < childrenCount; ++index) {
         child = va_arg(childrenList, AST_NODE*);
-        tmp = makeSibling(tmp, child);
+        tmp = S(tmp, child);
     }
     va_end(childrenList);
     return parent;
@@ -74,6 +74,15 @@ static inline AST_NODE* makeIDNode(char *lexeme, IDENTIFIER_KIND idKind)
     identifier->semantic_value.identifierSemanticValue.kind = idKind;
     identifier->semantic_value.identifierSemanticValue.symbolTableEntry = NULL;
     return identifier;                        
+}
+
+static inline AST_NODE* makeVoidNode(void)
+{
+    AST_NODE* voidnode = Allocate(IDENTIFIER_NODE);
+    voidnode->semantic_value.identifierSemanticValue.identifierName = "void";
+    voidnode->semantic_value.identifierSemanticValue.kind = NORMAL_ID;
+    voidnode->semantic_value.identifierSemanticValue.symbolTableEntry = NULL;
+    return voidnode;                        
 }
 
 static inline AST_NODE* makeStmtNode(STMT_KIND stmtKind)
@@ -169,7 +178,7 @@ program		: global_decl_list { $$=Allocate(PROGRAM_NODE);  makeChild($$,$1); prog
 
 global_decl_list: global_decl_list global_decl 
                     {
-                        $$ = makeSibling($1, $2);
+                        $$ = S($1, $2);
                     }	
                 | global_decl
                     {
@@ -197,6 +206,10 @@ function_decl	: type ID MK_LPAREN param_list MK_RPAREN MK_LBRACE block MK_RBRACE
                 | VOID ID MK_LPAREN param_list MK_RPAREN MK_LBRACE block MK_RBRACE      
                     {
                         /*TODO*/
+                        $$ = makeDeclNode(FUNCTION_DECL);
+                        AST_NODE* parameterList = Allocate(PARAM_LIST_NODE);
+                        makeChild(parameterList, $4);
+                        makeFamily($$, 4, makeVoidNode(), makeIDNode($2, NORMAL_ID), parameterList, $7);
                     }
                 | type ID MK_LPAREN  MK_RPAREN MK_LBRACE block MK_RBRACE 
                     {
@@ -207,6 +220,9 @@ function_decl	: type ID MK_LPAREN param_list MK_RPAREN MK_LBRACE block MK_RBRACE
                 | VOID ID MK_LPAREN  MK_RPAREN MK_LBRACE block MK_RBRACE 
                     {
                         /*TODO*/
+                        $$ = makeDeclNode(FUNCTION_DECL);
+                        AST_NODE* emptyParameterList = Allocate(PARAM_LIST_NODE);
+                        makeFamily($$, 4, makeVoidNode(), makeIDNode($2, NORMAL_ID), emptyParameterList, $6);
                     } 
                 ;
 
@@ -217,6 +233,7 @@ param_list	: param_list MK_COMMA  param
             | param	
                 {
                     /*TODO*/
+                    $$ = $1
                 }
             ;
 
@@ -228,6 +245,8 @@ param		: type ID
             | type ID dim_fn 
                 {
                     /*TODO*/
+                    $$ = makeDeclNode(FUNCTION_PARAMETER_DECL);
+                    makeFamily($$, 3, $1, makeIDNode($2, NORMAL_ID), $3);
                 }
             ;
 dim_fn		: MK_LB expr_null MK_RB 
@@ -243,6 +262,7 @@ dim_fn		: MK_LB expr_null MK_RB
 expr_null	:expr 
                 {
                     /*TODO*/
+                    /*may hio*/
                 }
             |
                 {
@@ -253,6 +273,8 @@ expr_null	:expr
 block           : decl_list stmt_list 
                     {
                         /*TODO*/
+                        $$ = Allocate(BLOCK_NODE);
+                        makeFamily($$, 2, $1, $2);
                     }
                 | stmt_list  
                     {
@@ -266,16 +288,19 @@ block           : decl_list stmt_list
                     }
                 |   {
                         /*TODO*/
+                        $$ = Allocate(NUL_NODE); 
                     }
                 ;
  
 decl_list	: decl_list decl 
                 {
-                        /*TODO*/
+                    /*TODO*/
+                    $$ = makeSibling($1, $2);
                 }
             | decl 
                 {
-                        /*TODO*/
+                    /*TODO*/
+                    $$ = $1;
                 }
             ;
 
@@ -292,10 +317,14 @@ decl		: type_decl
 type_decl 	: TYPEDEF type id_list MK_SEMICOLON  
                 {
                     /*TODO*/
+                    $$ = makeDeclNode(TYPE_DECL);
+                    makeFamily($$, 2, $2, $3);
                 }
             | TYPEDEF VOID id_list MK_SEMICOLON 
                 {
                     /*TODO*/
+                    $$ = makeDeclNode(TYPE_DECL);
+                    makeFamily($$, 2, makeVoidNode(), $3);
                 }
             ;
 
@@ -326,6 +355,7 @@ id_list		: ID
             | id_list MK_COMMA ID 
                 {
                     /*TODO*/
+                    $$ = makeSibling($1, makeIDNode($3, NORMAL_ID));
                 }
             | id_list MK_COMMA ID dim_decl
                 {
@@ -334,15 +364,20 @@ id_list		: ID
             | ID dim_decl
                 {
                     /*TODO*/
+                    $$ = makeChild($1, );
                 }
 		;
-dim_decl	: MK_LB cexpr MK_RB 
+dim_decl	: dim_decl MK_LB cexpr MK_RB 
                 {
                     /*TODO*/
                 } 
             /*TODO: Try if you can define a recursive production rule
             | .......
             */
+            | MK_LB cexpr MK_RB
+                {
+                    /*TODO*/
+                }
             ;
 cexpr		: cexpr OP_PLUS mcexpr 
                 {
@@ -352,43 +387,57 @@ cexpr		: cexpr OP_PLUS mcexpr
             | cexpr OP_MINUS mcexpr
                 {
                     /*TODO*/
+                    $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_SUB);
+                    makeFamily($$, 2, $1, $3);
                 } 
             | mcexpr 
                 {
                     /*TODO*/
+                    $$ = $1;
                 }
             ;  
 mcexpr		: mcexpr OP_TIMES cfactor 
                 {
                     /*TODO*/
+                    $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_MUL);
+                    makeFamily($$, 2, $1, $3);
                 }
             | mcexpr OP_DIVIDE cfactor 
                 {
                     /*TODO*/
+                    $$ = makeExprNode(BINARY_OPERATION, BINARY_OP_DIV);
+                    makeFamily($$, 2, $1, $3);
                 }
             | cfactor 
                 {
                     /*TODO*/
+                    $$ = $1;
                 }
             ;
         
 cfactor:	CONST 
                 {
                     /*TODO*/
+                    $$ = Allocate(CONST_VALUE_NODE);
+                    $$->semantic_value.const1=$1;
                 }
             | MK_LPAREN cexpr MK_RPAREN 
                 {
                     /*TODO*/
+                    /*mur kua din*/
+                    $$ = $2;
                 }
             ;
 
 init_id_list	: init_id 
                     {
                         /*TODO*/
+                        $$ = $1;
                     }
                 | init_id_list MK_COMMA init_id 
                     {
                         /*TODO*/
+                        $$ = makeSibling($1, $3);
                     }
                 ;
 
